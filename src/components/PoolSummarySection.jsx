@@ -1,22 +1,24 @@
 import { useState } from 'react'
 import { AlertTriangle, CheckCircle2, XCircle, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
 import { findConsecutiveGroups, getSeverity } from '../utils/eraAnalysis.js'
-import { truncateAddress, validatorExplorerUrl } from '../utils/format.js'
+import { poolExplorerUrl, poolLabel } from '../utils/format.js'
 
-export default function SummarySection({ validators, eraCount }) {
+const GAP_PAGE_SIZES = [5, 10, 20]
+
+export default function PoolSummarySection({ pools, eraCount }) {
   const [showClean, setShowClean] = useState(false)
-  const [gapPage,     setGapPage]     = useState(0)
+  const [gapPage, setGapPage]     = useState(0)
   const [gapPageSize, setGapPageSize] = useState(10)
 
-  if (!validators.length) return null
+  if (!pools.length) return null
 
-  const withGaps   = validators.filter(v => v.missedEras?.length > 0)
-  const clean      = validators.filter(v => Array.isArray(v.eraStat) && v.missedEras?.length === 0 && v.eraStat.length > 0)
-  const errorCards = validators.filter(v => v.fetchStatus === 'error')
+  const withGaps   = pools.filter(p => p.missedEras?.length > 0)
+  const clean      = pools.filter(p => Array.isArray(p.eraRewards) && p.missedEras?.length === 0 && p.eraRewards.length > 0)
+  const errorCards = pools.filter(p => p.fetchStatus === 'error')
 
-  // Find validators with consecutive misses ≥ 3
+  // Find pools with consecutive misses >= 3
   const critical = withGaps
-    .map(v => ({ v, groups: findConsecutiveGroups(v.missedEras) }))
+    .map(p => ({ p, groups: findConsecutiveGroups(p.missedEras) }))
     .filter(({ groups }) => groups.length > 0)
 
   // Gap table pagination
@@ -26,26 +28,16 @@ export default function SummarySection({ validators, eraCount }) {
   if (safeGapPage !== gapPage) setGapPage(safeGapPage)
 
   return (
-    <section aria-labelledby="summary-heading" className="space-y-4 animate-fade-in">
+    <section aria-labelledby="pool-summary-heading" className="space-y-4 animate-fade-in">
       <div className="flex items-center gap-2">
-        <h2 id="summary-heading" className="text-base font-semibold text-text">Summary</h2>
+        <h2 id="pool-summary-heading" className="text-base font-semibold text-text">Pool Summary</h2>
         <span className="h-px flex-1 bg-border" />
       </div>
 
       {/* ── Overview stat chips ───────────────────────────────────── */}
       <div className="grid grid-cols-3 gap-3">
-        <StatChip
-          value={validators.length}
-          label="Validators"
-          colour="text-text"
-          bg="bg-border/40"
-        />
-        <StatChip
-          value={clean.length}
-          label="Clean Record"
-          colour="text-success"
-          bg="bg-success/10"
-        />
+        <StatChip value={pools.length}  label="Total Pools" colour="text-text"    bg="bg-border/40" />
+        <StatChip value={clean.length}  label="All Rewarded" colour="text-success" bg="bg-success/10" />
         <StatChip
           value={withGaps.length}
           label="Has Gaps"
@@ -57,10 +49,10 @@ export default function SummarySection({ validators, eraCount }) {
       {/* ── Critical alerts ───────────────────────────────────────── */}
       {critical.length > 0 && (
         <div className="space-y-2">
-          {critical.map(({ v, groups }) =>
+          {critical.map(({ p, groups }) =>
             groups.map((g, gi) => (
               <div
-                key={`${v.address}-${gi}`}
+                key={`${p.poolId}-${gi}`}
                 role="alert"
                 className="flex gap-3 px-4 py-3 rounded-xl bg-danger/10 border border-danger/30 animate-fade-in"
               >
@@ -68,19 +60,19 @@ export default function SummarySection({ validators, eraCount }) {
                 <div className="text-xs leading-relaxed">
                   <span className="font-semibold text-danger">Critical: </span>
                   <span className="text-text">
-                    Validator{' '}
-                    <span className="font-semibold">{v.display || truncateAddress(v.address)}</span>
+                    Pool{' '}
+                    <span className="font-semibold">{poolLabel(p)}</span>
                     {' '}has missed <span className="font-semibold text-danger">{g.length} consecutive era{g.length > 1 ? 's' : ''}</span>
                     {' '}(eras {g[g.length - 1]}–{g[0]}).
-                    Pool operators backing this validator should investigate immediately.
+                    Pool operators should investigate immediately.
                   </span>
                 </div>
                 <a
-                  href={validatorExplorerUrl(v.address)}
+                  href={poolExplorerUrl(p.poolId)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="ml-auto flex-shrink-0 btn-icon !min-w-[32px] !min-h-[32px] text-danger"
-                  aria-label={`Open ${v.display || 'validator'} on Subscan`}
+                  aria-label={`Open Pool #${p.poolId} on Subscan`}
                 >
                   <ExternalLink size={12} />
                 </a>
@@ -90,12 +82,12 @@ export default function SummarySection({ validators, eraCount }) {
         </div>
       )}
 
-      {/* ── Reward gap table ──────────────────────────────────────── */}
+      {/* ── Reward gap table (paginated) ──────────────────────────── */}
       {withGaps.length > 0 ? (
         <div className="card overflow-hidden">
           <div className="px-4 py-3 border-b border-border bg-surface/50 flex items-center gap-2">
             <XCircle size={14} className="text-warning" />
-            <h3 className="text-sm font-semibold text-text">Validators with Missing Rewards</h3>
+            <h3 className="text-sm font-semibold text-text">Pools with Missing Rewards</h3>
             <span className="ml-auto px-2 py-0.5 rounded-full text-xs bg-warning/20 text-warning font-semibold">
               {withGaps.length}
             </span>
@@ -104,7 +96,7 @@ export default function SummarySection({ validators, eraCount }) {
             <table className="w-full text-xs min-w-[520px]">
               <thead>
                 <tr className="bg-surface border-b border-border">
-                  <th className="text-left px-4 py-2.5 font-semibold text-dim">Validator</th>
+                  <th className="text-left px-4 py-2.5 font-semibold text-dim">Pool</th>
                   <th className="text-center px-3 py-2.5 font-semibold text-dim">Checked</th>
                   <th className="text-center px-3 py-2.5 font-semibold text-dim">Rewarded</th>
                   <th className="text-center px-3 py-2.5 font-semibold text-dim">Missed</th>
@@ -113,24 +105,23 @@ export default function SummarySection({ validators, eraCount }) {
                 </tr>
               </thead>
               <tbody>
-                {gapPageItems.map((v, i) => {
-                  const sev      = getSeverity(v.missedEras.length)
-                  const missed   = v.missedEras.length
-                  // number of checked eras minus missed = rewarded count
+                {gapPageItems.map((p, i) => {
+                  const sev      = getSeverity(p.missedEras.length)
+                  const missed   = p.missedEras.length
                   const rewarded = Math.max(0, eraCount - missed)
                   return (
-                    <tr key={v.address} className={`border-b border-border/50 ${i % 2 === 0 ? 'bg-surface/20' : ''}`}>
+                    <tr key={p.poolId} className={`border-b border-border/50 ${i % 2 === 0 ? 'bg-surface/20' : ''}`}>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1.5">
                           <span className="font-medium text-text truncate max-w-[140px]">
-                            {v.display || truncateAddress(v.address)}
+                            {poolLabel(p)}
                           </span>
                           <a
-                            href={validatorExplorerUrl(v.address)}
+                            href={poolExplorerUrl(p.poolId)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-dim hover:text-cyan flex-shrink-0"
-                            aria-label={`Open on Subscan`}
+                            aria-label="Open on Subscan"
                           >
                             <ExternalLink size={10} />
                           </a>
@@ -140,8 +131,8 @@ export default function SummarySection({ validators, eraCount }) {
                       <td className="px-3 py-3 text-center text-success">{rewarded}</td>
                       <td className="px-3 py-3 text-center text-danger font-semibold">{missed}</td>
                       <td className="px-3 py-3 font-mono text-muted text-[11px] hidden sm:table-cell max-w-[160px] truncate">
-                        {v.missedEras.slice(0, 8).join(', ')}
-                        {v.missedEras.length > 8 ? '…' : ''}
+                        {p.missedEras.slice(0, 8).join(', ')}
+                        {p.missedEras.length > 8 ? '…' : ''}
                       </td>
                       <td className="px-3 py-3 text-center">
                         <SeverityBadge sev={sev} />
@@ -157,14 +148,14 @@ export default function SummarySection({ validators, eraCount }) {
           {gapPages > 1 && (
             <div className="flex items-center justify-between px-4 py-2.5 border-t border-border text-xs text-dim">
               <div className="flex items-center gap-2">
-                <span>{withGaps.length} validators</span>
+                <span>{withGaps.length} pools</span>
                 <select
                   value={gapPageSize}
                   onChange={e => { setGapPageSize(Number(e.target.value)); setGapPage(0) }}
                   className="bg-surface border border-border rounded px-1.5 py-0.5 text-xs text-text cursor-pointer"
                   aria-label="Rows per page"
                 >
-                  {[5, 10, 20].map(s => (
+                  {GAP_PAGE_SIZES.map(s => (
                     <option key={s} value={s}>{s} / page</option>
                   ))}
                 </select>
@@ -191,7 +182,7 @@ export default function SummarySection({ validators, eraCount }) {
         <div className="card px-4 py-5 flex items-center gap-3">
           <CheckCircle2 size={18} className="text-success flex-shrink-0" />
           <p className="text-sm text-text">
-            All validators received rewards for every era in the last <span className="font-semibold">{eraCount}</span> eras. ✨
+            All pools received rewards for every era in the last <span className="font-semibold">{eraCount}</span> eras. ✨
           </p>
         </div>
       )}
@@ -200,11 +191,11 @@ export default function SummarySection({ validators, eraCount }) {
       {errorCards.length > 0 && (
         <p className="text-xs text-dim flex items-center gap-1.5">
           <AlertTriangle size={12} className="text-warning" />
-          {errorCards.length} validator(s) had fetch errors and are excluded from gap analysis.
+          {errorCards.length} pool(s) had fetch errors and are excluded from gap analysis.
         </p>
       )}
 
-      {/* ── Clean validators (collapsed) ─────────────────────────── */}
+      {/* ── Clean pools (collapsed) ──────────────────────────────── */}
       {clean.length > 0 && (
         <div className="card overflow-hidden">
           <button
@@ -214,7 +205,7 @@ export default function SummarySection({ validators, eraCount }) {
           >
             <CheckCircle2 size={14} className="text-success" />
             <span className="text-sm font-semibold text-text">
-              Perfect Record ({clean.length} validator{clean.length !== 1 ? 's' : ''})
+              Perfect Record ({clean.length} pool{clean.length !== 1 ? 's' : ''})
             </span>
             <span className="ml-auto text-dim">
               {showClean ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -222,12 +213,12 @@ export default function SummarySection({ validators, eraCount }) {
           </button>
           {showClean && (
             <div className="border-t border-border px-4 py-3 grid grid-cols-1 sm:grid-cols-2 gap-2 animate-fade-in">
-              {clean.map(v => (
-                <div key={v.address} className="flex items-center gap-2 text-xs text-text-secondary">
+              {clean.map(p => (
+                <div key={p.poolId} className="flex items-center gap-2 text-xs text-text-secondary">
                   <CheckCircle2 size={12} className="text-success flex-shrink-0" />
-                  <span className="truncate">{v.display || truncateAddress(v.address)}</span>
+                  <span className="truncate">{poolLabel(p)}</span>
                   <a
-                    href={validatorExplorerUrl(v.address)}
+                    href={poolExplorerUrl(p.poolId)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="ml-auto text-dim hover:text-cyan flex-shrink-0"
